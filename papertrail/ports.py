@@ -1,15 +1,8 @@
-from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
-from papertrail.domain import (
-    InputLineage,
-    Job,
-    JobCreateResult,
-    JobFailure,
-    JobSubmission,
-    ProcessingResult,
-)
+from papertrail.artifacts import DownloadedDocument
+from papertrail.domain import Job, JobCreateResult, JobFailure, JobSubmission, ProcessingResult
 
 
 class JobRepository(Protocol):
@@ -38,18 +31,9 @@ class WorkQueue(Protocol):
     def depth(self) -> int: ...
 
 
-class DownloadedDocument(Protocol):
-    path: Path
-    lineage: InputLineage
-
-
 class DocumentFetcher(Protocol):
     async def fetch(self, document_url: str) -> DownloadedDocument: ...
 
 
 class DocumentProcessor(Protocol):
-    async def process(
-        self,
-        job: Job,
-        document: DownloadedDocument,
-    ) -> ProcessingResult: ...
+    async def process(self, job: Job, document: DownloadedDocument) -> ProcessingResult: ...
