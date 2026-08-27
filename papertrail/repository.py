@@ -5,7 +5,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID
 
-from papertrail.domain import Job, JobCreateResult, JobFailure, JobState, JobSubmission, ProcessingResult
+from papertrail.domain import InputLineage, Job, JobCreateResult, JobFailure, JobState, JobSubmission, ProcessingResult
 
 
 class IdempotencyConflictError(Exception):
@@ -18,11 +18,7 @@ class InMemoryJobRepository:
         self._idempotency_index: dict[str, UUID] = {}
         self._lock = asyncio.Lock()
 
-    async def create_or_reuse(
-        self,
-        submission: JobSubmission,
-        idempotency_key: str,
-    ) -> JobCreateResult:
+    async def create_or_reuse(self, submission, idempotency_key):
         key_hash = self._digest(idempotency_key)
         fingerprint = self._fingerprint(submission)
         async with self._lock:
@@ -44,63 +40,49 @@ class InMemoryJobRepository:
             self._idempotency_index[key_hash] = job.id
             return JobCreateResult(job=job, reused=False)
 
-    async def get(self, job_id: UUID) -> Job | None:
+    async def get(self, job_id):
         async with self._lock:
             return self._jobs.get(job_id)
 
-    async def claim(self, job_id: UUID) -> Job | None:
+    async def record_input(self, job_id, lineage):
+        async with self._lock:
+            job = self._jobs[job_id]
+            updated = replace(job, input_lineage=lineage, updated_at=datetime.now(UTC))
+            self._jobs[job_id] = updated
+            return updated
+
+    async def claim(self, job_id):
         async with self._lock:
             job = self._jobs.get(job_id)
             if job is None or job.state is not JobState.QUEUED:
                 return None
             now = datetime.now(UTC)
-            claimed = replace(
-                job,
-                state=JobState.RUNNING,
-                attempt_count=job.attempt_count + 1,
-                started_at=now,
-                updated_at=now,
-                failure=None,
-            )
+            claimed = replace(job, state=JobState.RUNNING, attempt_count=job.attempt_count + 1, started_at=now, updated_at=now, failure=None)
             self._jobs[job_id] = claimed
             return claimed
 
-    async def reschedule(self, job_id: UUID, failure: JobFailure) -> Job:
+    async def reschedule(self, job_id, failure):
         return await self._transition(job_id, JobState.QUEUED, failure=failure)
 
-    async def succeed(self, job_id: UUID, result: ProcessingResult) -> Job:
+    async def succeed(self, job_id, result):
         return await self._transition(job_id, JobState.SUCCEEDED, result=result)
 
-    async def fail(self, job_id: UUID, failure: JobFailure) -> Job:
+    async def fail(self, job_id, failure):
         return await self._transition(job_id, JobState.FAILED, failure=failure)
 
-    async def _transition(
-        self,
-        job_id: UUID,
-        state: JobState,
-        *,
-        result: ProcessingResult | None = None,
-        failure: JobFailure | None = None,
-    ) -> Job:
+    async def _transition(self, job_id, state, *, result=None, failure=None):
         async with self._lock:
             job = self._jobs[job_id]
             now = datetime.now(UTC)
-            updated = replace(
-                job,
-                state=state,
-                updated_at=now,
-                finished_at=now if state in {JobState.SUCCEEDED, JobState.FAILED} else None,
-                result=result,
-                failure=failure,
-            )
+            updated = replace(job, state=state, updated_at=now, finished_at=now if state in {JobState.SUCCEEDED, JobState.FAILED} else None, result=result, failure=failure)
             self._jobs[job_id] = updated
             return updated
 
     @staticmethod
-    def _digest(value: str) -> str:
+    def _digest(value):
         return hashlib.sha256(value.encode()).hexdigest()
 
     @staticmethod
-    def _fingerprint(submission: JobSubmission) -> str:
+    def _fingerprint(submission):
         payload = json.dumps(submission.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()

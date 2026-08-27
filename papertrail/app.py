@@ -6,6 +6,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CollectorRegistry, Gauge, make_asgi_app
 
 from papertrail.config import Settings
@@ -13,6 +14,7 @@ from papertrail.domain import Job, JobAccepted, JobStatus, JobSubmission
 from papertrail.fetcher import SafeDocumentFetcher
 from papertrail.jobs import JobService
 from papertrail.mineru import MinerUProcessor
+from papertrail.ollama import OllamaAnalyzer
 from papertrail.pipeline import DocumentPipeline
 from papertrail.repository import IdempotencyConflictError, InMemoryJobRepository
 from papertrail.worker import InMemoryWorkQueue, WorkerSupervisor
@@ -25,8 +27,18 @@ def create_app(service=None, worker=None) -> FastAPI:
         settings = Settings()
         queue = InMemoryWorkQueue()
         repository = InMemoryJobRepository()
-        fetcher = SafeDocumentFetcher(settings.work_dir, connect_timeout_seconds=settings.fetch_connect_timeout_seconds, read_timeout_seconds=settings.fetch_read_timeout_seconds, max_bytes=settings.fetch_max_bytes)
-        pipeline = DocumentPipeline(fetcher, MinerUProcessor(str(settings.mineru_base_url)))
+        fetcher = SafeDocumentFetcher(
+            settings.work_dir,
+            connect_timeout_seconds=settings.fetch_connect_timeout_seconds,
+            read_timeout_seconds=settings.fetch_read_timeout_seconds,
+            max_bytes=settings.fetch_max_bytes,
+        )
+        pipeline = DocumentPipeline(
+            repository,
+            fetcher,
+            MinerUProcessor(str(settings.mineru_base_url)),
+            OllamaAnalyzer(),
+        )
         worker = WorkerSupervisor(repository, queue, pipeline.handle, retry_limit=settings.retry_limit)
         service = JobService(repository, queue)
 
@@ -39,6 +51,12 @@ def create_app(service=None, worker=None) -> FastAPI:
             await worker.stop()
 
     app = FastAPI(title="Papertrail", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173"],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type", "Idempotency-Key"],
+    )
     registry = CollectorRegistry()
     queue_depth = Gauge("papertrail_queue_depth", "Jobs waiting in the in-memory queue", registry=registry)
     if worker and hasattr(service, "_queue") and service._queue:
