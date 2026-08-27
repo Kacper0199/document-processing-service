@@ -1,0 +1,11 @@
+.venv/
+.runtime/
+.papertrail-data/
+.coverage
+__pycache__/
+*.py[cod]
+.env
+
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.env

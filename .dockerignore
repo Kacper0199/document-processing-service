@@ -1,0 +1,6 @@
+.git
+.venv
+.runtime
+__pycache__
+*.pyc
+.papertrail-data
