@@ -29,3 +29,10 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pyright]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.15.4",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]

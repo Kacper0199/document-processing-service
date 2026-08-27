@@ -6,7 +6,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Request, status
-from prometheus_client import Gauge, make_asgi_app
+from prometheus_client import CollectorRegistry, Gauge, make_asgi_app
 
 from papertrail.config import Settings
 from papertrail.domain import Job, JobAccepted, JobStatus, JobSubmission
@@ -39,10 +39,11 @@ def create_app(service=None, worker=None) -> FastAPI:
             await worker.stop()
 
     app = FastAPI(title="Papertrail", version="0.1.0", lifespan=lifespan)
-    queue_depth = Gauge("papertrail_queue_depth", "Jobs waiting in the in-memory queue")
+    registry = CollectorRegistry()
+    queue_depth = Gauge("papertrail_queue_depth", "Jobs waiting in the in-memory queue", registry=registry)
     if worker and hasattr(service, "_queue") and service._queue:
         queue_depth.set_function(service._queue.depth)
-    app.mount("/metrics", make_asgi_app())
+    app.mount("/metrics", make_asgi_app(registry=registry))
 
     @app.middleware("http")
     async def log_request(request: Request, call_next):
