@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      PAPERTRAIL_MINERU_BASE_URL: ${PAPERTRAIL_MINERU_BASE_URL:-http://host.docker.internal:8000}
+    volumes:
+      - papertrail-work:/app/.papertrail-data
+
+volumes:
+  papertrail-work:
