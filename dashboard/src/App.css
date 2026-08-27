@@ -1,0 +1,16 @@
+main { max-width: 1100px; margin: auto; padding: 42px 24px 64px; }
+header, .intro, .grid, .flow { display: flex; gap: 24px; }
+header { align-items: center; justify-content: space-between; border-bottom: 1px solid #d9d8d1; padding-bottom: 28px; }
+h1, h2, p { margin: 0; } h1 { font-size: 1.5rem; } h2 { font-size: clamp(2.2rem, 5vw, 4.8rem); line-height: .98; max-width: 740px; }
+.eyebrow { color: #6c675f; font: 500 .75rem 'Fira Code', monospace; letter-spacing: .08em; margin-bottom: 12px; }
+a { color: #171717; font-weight: 600; }
+.intro { justify-content: space-between; align-items: end; padding: 72px 0; } .intro p:not(.eyebrow) { color: #57534e; max-width: 570px; margin-top: 20px; line-height: 1.6; }
+.service, aside, form { background: #fff; border: 1px solid #d9d8d1; } .service { padding: 18px; min-width: 190px; font-weight: 600; } small { color: #6c675f; font-weight: 400; } .dot { display: inline-block; width: 9px; height: 9px; background: #548246; border-radius: 50%; margin-right: 8px; }
+.grid { align-items: stretch; } form { flex: 1; padding: 28px; } aside { width: 330px; padding: 28px; }
+label { display: block; font-weight: 600; margin: 0 0 8px; } input { width: 100%; padding: 13px; border: 1px solid #bbb7ae; margin-bottom: 20px; background: #fbfbf9; } input:focus, button:focus { outline: 3px solid #d4af37; outline-offset: 2px; }
+button { min-height: 46px; border: 0; background: #171717; color: #fff; padding: 0 18px; cursor: pointer; font-weight: 600; } button:hover { background: #404040; }
+.message, .empty { margin-top: 18px; color: #6c675f; } strong { display: block; font-size: 2rem; margin: 10px 0; text-transform: capitalize; } .mono { font: .72rem 'Fira Code', monospace; word-break: break-all; color: #6c675f; }
+dl { margin: 28px 0 0; } dl div { display: flex; justify-content: space-between; padding: 12px 0; border-top: 1px solid #e6e4dd; } dt { color: #6c675f; } dd { margin: 0; font-weight: 600; }
+.flow { justify-content: center; align-items: center; padding: 44px; color: #6c675f; font-family: 'Fira Code', monospace; } .flow span { background: #eae8e0; padding: 8px 12px; }
+@media (max-width: 720px) { main { padding: 24px 16px; } .intro, .grid { display: block; } .intro { padding: 52px 0; } .service, aside { width: 100%; margin-top: 24px; } .flow { padding: 32px 0; gap: 8px; font-size: .7rem; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
