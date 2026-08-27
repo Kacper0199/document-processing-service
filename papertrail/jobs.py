@@ -1,8 +1,10 @@
+from uuid import UUID
+
 from papertrail.ports import JobRepository, WorkQueue
 
 
 class JobService:
-    def __init__(self, repository, queue=None):
+    def __init__(self, repository: JobRepository, queue: WorkQueue | None = None):
         self._repository = repository
         self._queue = queue
 
@@ -12,5 +14,8 @@ class JobService:
             await self._queue.enqueue(result.job.id)
         return result
 
-    async def get(self, job_id):
+    async def get(self, job_id: UUID):
         return await self._repository.get(job_id)
+
+    async def list(self, limit: int = 100):
+        return await self._repository.list(limit)
