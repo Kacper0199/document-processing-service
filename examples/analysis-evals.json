@@ -1,0 +1,12 @@
+{
+  "schema_version": "document-analysis-evals.v1",
+  "cases": [
+    {"id":"security-advice","text":"Employees should report suspicious emails and enable multi-factor authentication.","topic":"security","route":"review_queue","commitments":0},
+    {"id":"weather-advice","text":"Move to higher ground during a flood warning and follow emergency alerts.","topic":"weather_safety","route":"review_queue","commitments":0},
+    {"id":"health-facts","text":"Seasonal affective disorder is a type of depression that may begin in late fall.","topic":"health","route":"knowledge_library","commitments":0},
+    {"id":"environment-facts","text":"Bioremediation uses microorganisms to break down contaminants in soil and groundwater.","topic":"environment","route":"knowledge_library","commitments":0},
+    {"id":"space-facts","text":"Mars is the fourth planet from the Sun and robotic missions study its surface.","topic":"space_science","route":"knowledge_library","commitments":0},
+    {"id":"finance-facts","text":"A banknote can include a security thread and color-shifting ink.","topic":"finance_currency","route":"knowledge_library","commitments":0},
+    {"id":"explicit-obligation","text":"Acme shall submit the security assessment to the program office by 15 September 2026.","topic":"security","route":"action_queue","commitments":1}
+  ]
+}

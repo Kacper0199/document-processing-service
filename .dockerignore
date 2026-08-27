@@ -1,6 +1,12 @@
 .git
 .venv
 .runtime
+output
+.pytest_cache
 __pycache__
 *.pyc
 .papertrail-data
+.env
+.env.*
+dashboard/node_modules
+dashboard/dist

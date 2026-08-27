@@ -1,24 +1,33 @@
 # Document Processing Service
 
-This project is an asynchronous service for processing documents from a URL. It accepts a request, creates a job, and processes the document outside the HTTP request. The client can check the job status while the work is running.
+This project is a local document intelligence intake service. It accepts a document URL, creates an asynchronous job, extracts document text with MinerU, and uses a local Ollama model to prepare a review card.
 
-The document processor is MinerU. MinerU is an open-source tool that extracts structured content from documents such as PDFs, images, DOCX, PPTX, and XLSX files. In this project, the service downloads a document first and then sends the local file to the MinerU API. The service does not pass a user-provided URL directly to MinerU.
+The review card contains a topic, document type, short summary, keywords, entities, actionability, routing decision, and explicit commitments. Each commitment must include evidence from the extracted text. The service is designed as a practical demonstration of document ingestion, local model orchestration, lineage, retries, and observable background work.
 
-The project uses FastAPI, an in-memory queue and repository, a MinerU adapter, and a small React dashboard. It is a local demonstration service, not a complete production platform.
+## Components
 
-## Features
+- **MinerU** extracts structured document content and Markdown from PDFs and office files.
+- **Ollama** runs a local text-only LLM. This project uses `llama3.1:8b` by default for structured document analysis.
+- **FastAPI** provides job, health, and metrics endpoints.
+- **React and Vite** provide the Document Intelligence Intake Desk dashboard.
 
-- `POST /jobs` accepts a document URL and returns `202 Accepted` with a job ID.
-- `GET /jobs/{id}` returns the current job state.
-- `Idempotency-Key` prevents duplicate jobs for the same request.
-- Retryable errors are retried up to three times.
-- The service provides liveness, readiness, Prometheus metrics, and JSON request logs.
-- The document fetcher checks the URL, redirects, content type, and response size before processing.
-- The React dashboard can submit a job and display its status.
+## Workflow
 
-## Run locally
+```text
+Document URL
+→ protected download
+→ input SHA-256 and lineage
+→ MinerU Markdown extraction
+→ Ollama structured analysis
+→ deterministic route
+→ job result and dashboard
+```
 
-The API uses Python 3.13 and uv.
+A document goes to `action_queue` when it has an explicit obligation. Security, weather-safety, and emergency advice go to `review_queue`. Other documents go to `knowledge_library`.
+
+## Local setup
+
+The API uses Python 3.13 and uv. The dashboard uses Node.js and npm.
 
 ```bash
 uv sync
@@ -33,7 +42,27 @@ npm install
 npm run dev
 ```
 
-Vite prints the dashboard URL. The dashboard uses `http://localhost:8080` by default. Set `VITE_API_URL` when the API runs at a different address.
+The dashboard uses `http://localhost:8080` by default. Set `VITE_API_URL` if the API runs at a different address.
+
+## Local model services on macOS
+
+MinerU and Ollama run outside the application container. This is intentional. Docker Desktop on macOS cannot expose Apple MPS or MLX acceleration to a MinerU container.
+
+Start Ollama normally, then confirm the required model is available:
+
+```bash
+ollama list
+ollama run llama3.1:8b
+```
+
+Start the isolated MinerU API from the project root:
+
+```bash
+HOME="$PWD/.runtime/home" HF_HOME="$PWD/.runtime/huggingface" \
+  .runtime/mineru-venv/bin/mineru-api --host 127.0.0.1 --port 8000
+```
+
+The isolated MinerU environment also needs `mineru[pipeline]` and `six`. MinerU 3.4.5 currently omits `six` from its pipeline dependency declaration even though the hybrid backend imports it.
 
 ## Submit a job
 
@@ -44,27 +73,27 @@ curl -i http://127.0.0.1:8080/jobs \
   -d '{"document_url":"https://example.org/report.pdf","operation":"extract_markdown"}'
 ```
 
-The first request returns `202 Accepted`. Sending the same request with the same idempotency key returns the existing job and sets `reused` to `true`.
+Use the job ID to check progress:
 
 ```bash
 curl http://127.0.0.1:8080/jobs/JOB_ID
-curl http://127.0.0.1:8080/health/live
+curl http://127.0.0.1:8080/jobs
 curl http://127.0.0.1:8080/health/ready
 curl http://127.0.0.1:8080/metrics
 ```
 
-## MinerU on macOS
+`GET /jobs` returns at most 100 in-memory jobs, newest first. It exists for the local dashboard and is not intended as a durable production archive.
 
-MinerU runs separately from the application container. Its Docker setup is intended for Linux or WSL2 GPU environments. Docker Desktop on macOS cannot provide MPS or MLX acceleration to a MinerU container.
+## Demonstration corpus
 
-For this workspace, MinerU is installed locally under `.runtime/`. The model files and MinerU configuration remain in this directory and are not committed to the repository.
+`examples/corpus.json` lists 22 locally validated, public-source PDFs across eight topics. The PDFs are not committed. They are downloaded to `.runtime/corpus/pdfs` by the local acquisition script.
 
 ```bash
-HOME="$PWD/.runtime/home" HF_HOME="$PWD/.runtime/huggingface" \
-  .runtime/mineru-venv/bin/mineru-api --host 127.0.0.1 --port 8000
+.runtime/mineru-venv/bin/python .runtime/download_corpus.py
+PYTHONPATH=. .venv/bin/python .runtime/run_evals.py
 ```
 
-The service uses `http://127.0.0.1:8000` as the default MinerU address. Set `PAPERTRAIL_MINERU_BASE_URL` when MinerU runs elsewhere.
+The corpus contains space science, earth science, security, environment, health, weather safety, finance and currency, and emergency preparedness documents. The manifest records source URLs, publishers, expected labels, page counts, sizes, and SHA-256 hashes.
 
 ## Docker
 
@@ -72,31 +101,37 @@ The service uses `http://127.0.0.1:8000` as the default MinerU address. Set `PAP
 docker compose up --build
 ```
 
-The API is available on port 8080. On macOS, Compose uses `host.docker.internal:8000` to reach the native MinerU service. Start MinerU first. On Linux, set `PAPERTRAIL_MINERU_BASE_URL` to the address of a separate MinerU service.
+The container exposes port 8080. On macOS it calls native services through `host.docker.internal`:
 
-## Configuration
+- MinerU: `http://host.docker.internal:8000`
+- Ollama: `http://host.docker.internal:11434`
+
+Override the following values when services run elsewhere:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PAPERTRAIL_MINERU_BASE_URL` | `http://127.0.0.1:8000` | MinerU API address |
-| `PAPERTRAIL_WORK_DIR` | `.papertrail-data` | Temporary downloaded files |
-| `PAPERTRAIL_FETCH_MAX_BYTES` | `10000000` | Maximum download size in bytes |
-| `PAPERTRAIL_RETRY_LIMIT` | `3` | Maximum number of attempts |
+| `PAPERTRAIL_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama API address |
+| `PAPERTRAIL_OLLAMA_MODEL` | `llama3.1:8b` | Local analysis model |
+| `PAPERTRAIL_WORK_DIR` | `.papertrail-data` | Temporary downloaded artifacts |
+| `PAPERTRAIL_FETCH_MAX_BYTES` | `10000000` | Maximum document download size |
+| `PAPERTRAIL_RETRY_LIMIT` | `3` | Maximum started attempts |
 
-## Tests
+## Tests and evaluation
 
 ```bash
 uv run pytest -q
 uv run coverage run -m pytest -q
 uv run coverage report
+cd dashboard && npm run build
 ```
 
-The tests cover API idempotency, worker retry behavior, and loopback URL blocking. They do not run live MinerU inference.
+The committed tests cover API idempotency and list ordering, retries, URL blocking, MinerU Markdown normalization, structured Ollama requests, schema rejection, commitment grounding, input limits, and full workflow integration with local fakes.
 
-## Design choices and limits
+The live local evaluation contains seven labelled cases. It passed 7 of 7 with `llama3.1:8b`. A real security PDF was extracted through MinerU and analyzed as `security` routed to `review_queue`.
 
-The repository and queue are in memory to keep the local setup simple. Both are behind interfaces, so they can later be replaced with a database, Redis, or a separate task queue without changing the API contract.
+## Limits and trade-offs
 
-The `stable` and `candidate` processor configuration shows a simple promotion and rollback pattern. It does not replace a full model-serving system.
+The repository and queue are in memory, so state is lost after restart. The service has one worker and an intentionally bounded job list. Large extracted documents above the single-call 6,000-byte serialized input budget fail explicitly rather than being truncated. A future long-document feature should use a separate map-reduce design with its own merge and evidence contract.
 
-The current version has a few known limits. State is lost after restart, one worker processes the queue, and MinerU stores its own result artifacts. The URL checks reduce SSRF risk. A production deployment should also use network-level egress controls.
+The URL checks reduce SSRF risk, but a production deployment should also enforce outbound network controls. The source corpus stays outside Git because official documents can still include third-party images, marks, or credits.
