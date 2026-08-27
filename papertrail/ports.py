@@ -1,6 +1,7 @@
 from typing import Protocol
 from uuid import UUID
 
+from papertrail.analysis import AnalysisRun
 from papertrail.artifacts import DownloadedDocument
 from papertrail.domain import Job, JobCreateResult, JobFailure, JobSubmission, ProcessingResult
 
@@ -37,3 +38,7 @@ class DocumentFetcher(Protocol):
 
 class DocumentProcessor(Protocol):
     async def process(self, job: Job, document: DownloadedDocument) -> ProcessingResult: ...
+
+
+class DocumentAnalyzer(Protocol):
+    async def analyze(self, markdown: str) -> AnalysisRun: ...
