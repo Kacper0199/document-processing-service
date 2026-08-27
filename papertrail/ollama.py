@@ -40,7 +40,7 @@ EXAMPLE_OUTPUT = """{"topic":"security","document_type":"policy","language":"en"
 class OllamaAnalyzer:
     def __init__(
         self, base_url="http://127.0.0.1:11434", model="llama3.1:8b",
-        timeout_seconds=90, max_input_bytes=3500, transport=None,
+        timeout_seconds=90, max_input_bytes=6000, transport=None,
     ):
         self._url = base_url.rstrip("/") + "/api/chat"
         self._model = model
@@ -52,7 +52,8 @@ class OllamaAnalyzer:
         text = markdown.strip()
         if not text:
             raise self._error("empty_extraction", "MinerU did not return document text.", False)
-        if len(text.encode("utf-8")) > self._max_input_bytes:
+        document_json = json.dumps(text, ensure_ascii=False)
+        if len(document_json.encode("utf-8")) > self._max_input_bytes:
             raise self._error(
                 "analysis_input_too_large",
                 "The extracted text is too large for one analysis call.",
@@ -62,7 +63,7 @@ class OllamaAnalyzer:
         validation_hint = ""
         for attempt in range(2):
             started = time.perf_counter()
-            payload = self._payload(text, validation_hint)
+            payload = self._payload(document_json, validation_hint)
             try:
                 async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
                     response = await client.post(self._url, json=payload)
@@ -103,7 +104,7 @@ class OllamaAnalyzer:
             )
         raise RuntimeError("unreachable")
 
-    def _payload(self, text, validation_hint):
+    def _payload(self, document_json, validation_hint):
         return {
             "model": self._model,
             "stream": False,
@@ -114,7 +115,7 @@ class OllamaAnalyzer:
                 {"role": "system", "content": SYSTEM_PROMPT + validation_hint},
                 {"role": "user", "content": EXAMPLE_INPUT},
                 {"role": "assistant", "content": EXAMPLE_OUTPUT},
-                {"role": "user", "content": "Analyze this extracted document JSON string:\n" + json.dumps(text, ensure_ascii=False)},
+                {"role": "user", "content": "Analyze this extracted document JSON string:\n" + document_json},
             ],
         }
 

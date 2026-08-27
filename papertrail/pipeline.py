@@ -1,7 +1,7 @@
 import hashlib
 
-from papertrail.worker import ProcessingError
 from papertrail.domain import JobFailure
+from papertrail.worker import ProcessingError
 
 
 class DocumentPipeline:
@@ -18,7 +18,9 @@ class DocumentPipeline:
             extraction = await self._processor.process(job, document)
             markdown = self._markdown_from(extraction.metadata.get("mineru_result"))
             if not markdown:
-                raise ProcessingError(JobFailure("mineru_missing_markdown", "MinerU did not return Markdown output.", True))
+                raise ProcessingError(
+                    JobFailure("mineru_missing_markdown", "MinerU did not return Markdown output.", True)
+                )
             analysis = await self._analyzer.analyze(markdown)
             metadata = {
                 "extraction": {
@@ -28,14 +30,19 @@ class DocumentPipeline:
                 },
                 "analysis": analysis.model_dump(mode="json"),
             }
-            return extraction.__class__(extraction.processor, extraction.processor_version, extraction.artifacts, metadata)
+            return extraction.__class__(
+                extraction.processor,
+                extraction.processor_version,
+                extraction.artifacts,
+                metadata,
+            )
         finally:
             document.path.unlink(missing_ok=True)
 
     @staticmethod
     def _markdown_from(value):
         if isinstance(value, dict):
-            for key in ("markdown", "md", "content"):
+            for key in ("markdown", "md_content", "md", "content"):
                 candidate = value.get(key)
                 if isinstance(candidate, str) and candidate.strip():
                     return candidate

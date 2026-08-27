@@ -101,7 +101,7 @@ async def test_rejects_token_dense_input_before_request():
 
     analyzer = OllamaAnalyzer(transport=httpx.MockTransport(handle))
     with pytest.raises(ProcessingError) as error:
-        await analyzer.analyze("界" * 1200)
+        await analyzer.analyze("界" * 2500)
 
     assert error.value.failure.code == "analysis_input_too_large"
 

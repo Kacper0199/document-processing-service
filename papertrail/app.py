@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CollectorRegistry, Gauge, make_asgi_app
 
 from papertrail.config import Settings
-from papertrail.domain import Job, JobAccepted, JobStatus, JobSubmission
+from papertrail.domain import JobAccepted, JobStatus, JobSubmission
 from papertrail.fetcher import SafeDocumentFetcher
 from papertrail.jobs import JobService
 from papertrail.mineru import MinerUProcessor
@@ -20,6 +20,7 @@ from papertrail.repository import IdempotencyConflictError, InMemoryJobRepositor
 from papertrail.worker import InMemoryWorkQueue, WorkerSupervisor
 
 logger = logging.getLogger("papertrail")
+JOB_LIST_LIMIT = 100
 
 
 def create_app(service=None, worker=None) -> FastAPI:
@@ -37,7 +38,7 @@ def create_app(service=None, worker=None) -> FastAPI:
             repository,
             fetcher,
             MinerUProcessor(str(settings.mineru_base_url)),
-            OllamaAnalyzer(),
+            OllamaAnalyzer(str(settings.ollama_base_url), settings.ollama_model),
         )
         worker = WorkerSupervisor(repository, queue, pipeline.handle, retry_limit=settings.retry_limit)
         service = JobService(repository, queue)
@@ -88,6 +89,10 @@ def create_app(service=None, worker=None) -> FastAPI:
         except IdempotencyConflictError as error:
             raise HTTPException(status_code=409, detail="idempotency_key_conflict") from error
         return JobAccepted(job_id=result.job.id, state=result.job.state, reused=result.reused)
+
+    @app.get("/jobs", response_model=list[JobStatus])
+    async def list_jobs():
+        return [_to_status(job) for job in await service.list(JOB_LIST_LIMIT)]
 
     @app.get("/jobs/{job_id}", response_model=JobStatus)
     async def get_job(job_id: UUID):
