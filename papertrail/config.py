@@ -8,7 +8,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="PAPERTRAIL_")
 
     processor_config_path: Path = Path("config/processors.yaml")
-    mineru_base_url: AnyHttpUrl | None = None
+    work_dir: Path = Path(".papertrail-data")
+    mineru_base_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8000")
     fetch_connect_timeout_seconds: float = Field(default=3, gt=0, le=30)
     fetch_read_timeout_seconds: float = Field(default=15, gt=0, le=120)
     fetch_max_bytes: int = Field(default=10_000_000, gt=0, le=50_000_000)
