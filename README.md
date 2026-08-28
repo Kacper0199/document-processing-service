@@ -25,24 +25,28 @@ Document URL
 
 A document goes to `action_queue` when it has an explicit obligation. Security, weather-safety, and emergency advice go to `review_queue`. Other documents go to `knowledge_library`.
 
-## Local setup
+## One-command demo
 
-The API uses Python 3.13 and uv. The dashboard uses Node.js and npm.
-
-```bash
-uv sync
-uv run uvicorn papertrail.app:create_app --factory --host 127.0.0.1 --port 8080
-```
-
-Start the dashboard in another terminal:
+After the first dependency setup, start the complete local demo from the project root:
 
 ```bash
-cd dashboard
-npm install
-npm run dev
+./scripts/demo.sh restart
 ```
 
-The dashboard uses `http://localhost:8080` by default. Set `VITE_API_URL` if the API runs at a different address.
+The script checks Ollama, starts MinerU, FastAPI, and Vite in the correct order, waits for each health endpoint, and opens `http://127.0.0.1:5173` on macOS. It reuses an existing healthy Ollama process. Logs and PID files stay under `.runtime/demo/`.
+
+Useful commands:
+
+```bash
+./scripts/demo.sh status
+./scripts/demo.sh logs
+./scripts/demo.sh stop
+./scripts/demo.sh restart
+```
+
+The dashboard accepts one URL per line, up to ten unique documents. Curated presets make a batch easy to prepare. One worker processes one document while the remaining jobs stay queued, so the asynchronous flow is visible in the state counters and job list.
+
+For manual development, the API uses Python 3.13 and uv, while the dashboard uses Node.js and npm. The longer service commands are listed below for troubleshooting.
 
 ## Local model services on macOS
 
@@ -132,6 +136,6 @@ The live local evaluation contains seven labelled cases. It passed 7 of 7 with `
 
 ## Limits and trade-offs
 
-The repository and queue are in memory, so state is lost after restart. The service has one worker and an intentionally bounded job list. Large extracted documents above the single-call 6,000-byte serialized input budget fail explicitly rather than being truncated. A future long-document feature should use a separate map-reduce design with its own merge and evidence contract.
+The repository and queue are in memory, so state is lost after restart. The service has one worker and an intentionally bounded job list. Long extracted documents are compacted with `document-intake-selection-v1`: complete headings, overview paragraphs, action-related paragraphs, final paragraphs, and then remaining source blocks are selected without splitting or inventing text. The selection is limited to 5,600 serialized bytes before the 6,000-byte Ollama guard, and the result records whether compaction occurred.
 
 The URL checks reduce SSRF risk, but a production deployment should also enforce outbound network controls. The source corpus stays outside Git because official documents can still include third-party images, marks, or credits.
