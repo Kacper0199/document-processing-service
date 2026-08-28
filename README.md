@@ -139,3 +139,60 @@ The live local evaluation contains seven labelled cases. It passed 7 of 7 with `
 The repository and queue are in memory, so state is lost after restart. The service has one worker and an intentionally bounded job list. Long extracted documents are compacted with `document-intake-selection-v1`: complete headings, overview paragraphs, action-related paragraphs, final paragraphs, and then remaining source blocks are selected without splitting or inventing text. The selection is limited to 5,600 serialized bytes before the 6,000-byte Ollama guard, and the result records whether compaction occurred.
 
 The URL checks reduce SSRF risk, but a production deployment should also enforce outbound network controls. The source corpus stays outside Git because official documents can still include third-party images, marks, or credits.
+
+## Demo walkthrough
+
+The screenshots below show the expected flow from intake to a completed review card. They use the local batch demonstration with public PDF sources.
+
+### 1. Open the intake desk
+
+The dashboard starts with the current queue counters, a batch intake form, curated presets, and filters. This is the main screen used to submit documents and monitor the worker.
+
+![Intake desk overview](images/01-intake-overview.png)
+
+### 2. Prepare a batch
+
+Select one or more curated presets, or paste public document URLs into the text area. The form accepts one URL per line and shows how many valid documents will be submitted.
+
+![Batch document selection](images/02-batch-document-selection.png)
+
+### 3. Review a completed security document
+
+After MinerU and Ollama finish, expand a job card to see the topic, summary, actionability, route, and extracted document details. This example is a phishing document routed to the review queue.
+
+![Security analysis summary](images/03-security-analysis-summary.png)
+
+### 4. Inspect evidence and extraction output
+
+The expanded card also contains recognized entities, the Markdown extraction preview, input lineage, and model timing. These fields make it possible to trace the result back to the original document.
+
+![Security analysis evidence](images/04-security-analysis-evidence.png)
+
+### 5. Observe asynchronous queue processing
+
+When several documents are submitted, one job is processed while the others remain queued. The counters and job cards make this state visible without using the API directly.
+
+![Asynchronous queue state](images/05-asynchronous-queue-state.png)
+
+### 6. Compare a different topic
+
+The same workflow can classify documents from another domain. This example shows a space-science document routed to the knowledge library.
+
+![Space analysis summary](images/06-space-analysis-summary.png)
+
+### 7. Inspect source lineage for the space document
+
+The detailed card shows entities, extraction text, source information, hash, and the local model metadata used for the result.
+
+![Space analysis evidence](images/07-space-analysis-evidence.png)
+
+### 8. Review the completed corpus
+
+Once documents finish, the intake desk becomes a small review workspace. Use search and filters to inspect completed documents by topic, route, or state.
+
+![Completed intake corpus](images/08-completed-intake-corpus.png)
+## Potential improvements
+
+- Refine the dashboard layout and spacing after feedback from more users, especially on smaller screens and long result cards.
+- Add durable storage for jobs and queue with.
+- Add authentication and job access before exposing the service outside a local  environment.
