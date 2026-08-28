@@ -1,6 +1,7 @@
 import hashlib
 
 from papertrail.domain import JobFailure
+from papertrail.ollama import select_analysis_text
 from papertrail.worker import ProcessingError
 
 
@@ -21,7 +22,8 @@ class DocumentPipeline:
                 raise ProcessingError(
                     JobFailure("mineru_missing_markdown", "MinerU did not return Markdown output.", True)
                 )
-            analysis = await self._analyzer.analyze(markdown)
+            selection = select_analysis_text(markdown)
+            analysis = await self._analyzer.analyze(selection.text)
             metadata = {
                 "extraction": {
                     "sha256": hashlib.sha256(markdown.encode()).hexdigest(),
@@ -29,6 +31,12 @@ class DocumentPipeline:
                     "preview": markdown[:1000],
                 },
                 "analysis": analysis.model_dump(mode="json"),
+                "analysis_selection": {
+                    "strategy_version": selection.strategy_version,
+                    "source_characters": selection.source_characters,
+                    "selected_characters": selection.selected_characters,
+                    "compacted": selection.compacted,
+                },
             }
             return extraction.__class__(
                 extraction.processor,

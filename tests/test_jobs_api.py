@@ -53,6 +53,39 @@ def test_lists_job_status_resources_newest_first():
     assert response.json()[0]["state"] == "queued"
 
 
+@pytest.mark.parametrize("origin", ["http://localhost:5173", "http://127.0.0.1:5173"])
+def test_allows_dashboard_origins_for_job_requests(origin):
+    client = TestClient(create_app(JobService(InMemoryJobRepository())))
+
+    response = client.options(
+        "/jobs",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,idempotency-key",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+    assert "POST" in response.headers["access-control-allow-methods"]
+
+
+def test_rejects_foreign_origin_for_job_requests():
+    client = TestClient(create_app(JobService(InMemoryJobRepository())))
+
+    response = client.options(
+        "/jobs",
+        headers={
+            "Origin": "https://untrusted.example",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+
+
 @pytest.mark.asyncio
 async def test_repository_lists_newest_jobs_with_a_bound():
     repository = InMemoryJobRepository()

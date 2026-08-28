@@ -1,6 +1,7 @@
 import json
 import re
 import time
+from dataclasses import dataclass
 
 import httpx
 from pydantic import ValidationError
@@ -10,6 +11,13 @@ from papertrail.domain import JobFailure
 from papertrail.worker import ProcessingError
 
 PROMPT_VERSION = "document-intake-v1"
+SELECTION_VERSION = "document-intake-selection-v1"
+SELECTION_MAX_BYTES = 5600
+ANALYSIS_MAX_BYTES = 6000
+ACTION_MARKERS = re.compile(
+    r"\b(must|shall|will|required|requires?|agrees?|commits?|should|may|recommended?|recommendation|advice|advised?|encouraged?|consider|avoid)\b",
+    re.I,
+)
 
 SYSTEM_PROMPT = """You analyze extracted document text for an intake service.
 Use only information stated in the document. Do not guess missing facts.
@@ -37,6 +45,73 @@ EXAMPLE_INPUT = "Example document:\nVendor shall deliver the security audit by 3
 EXAMPLE_OUTPUT = """{"topic":"security","document_type":"policy","language":"en","summary":"The vendor must deliver a security audit by 30 June 2026.","keywords":["security audit","vendor","delivery"],"actionability":"required_action","entities":[{"name":"Vendor","type":"organization"},{"name":"30 June 2026","type":"date"}],"commitments":[{"action":"deliver the security audit","owner":"Vendor","deadline":"30 June 2026","evidence":"Vendor shall deliver the security audit by 30 June 2026."}]}"""
 
 
+@dataclass(frozen=True, slots=True)
+class AnalysisSelection:
+    text: str
+    strategy_version: str
+    source_characters: int
+    selected_characters: int
+    compacted: bool
+
+
+def _serialized_bytes(text):
+    return len(json.dumps(text, ensure_ascii=False).encode("utf-8"))
+
+
+def _safe_prefix(text):
+    lower = 0
+    upper = len(text)
+    while lower < upper:
+        middle = (lower + upper + 1) // 2
+        if _serialized_bytes(text[:middle]) <= SELECTION_MAX_BYTES:
+            lower = middle
+        else:
+            upper = middle - 1
+
+    end = lower
+    window_start = max(0, end - 200)
+    boundaries = list(re.finditer(r"[.!?](?=\s)|\s", text[window_start:end]))
+    if boundaries:
+        boundary = boundaries[-1]
+        end = window_start + (boundary.end() if boundary.group() in ".!?" else boundary.start())
+    return text[:end]
+
+
+def select_analysis_text(markdown):
+    if _serialized_bytes(markdown) <= SELECTION_MAX_BYTES:
+        return AnalysisSelection(markdown, SELECTION_VERSION, len(markdown), len(markdown), False)
+
+    blocks = [block.strip() for block in re.split(r"\n[ \t]*\n", markdown) if block.strip()]
+    headings = [index for index, block in enumerate(blocks) if block.lstrip().startswith("#")]
+    heading_indices = set(headings)
+    paragraphs = [index for index in range(len(blocks)) if index not in heading_indices]
+    priorities = [
+        headings,
+        paragraphs[:3],
+        [index for index, block in enumerate(blocks) if ACTION_MARKERS.search(block)],
+        paragraphs[-3:],
+        range(len(blocks)),
+    ]
+    selected = set()
+    selected_texts = set()
+
+    for indices in priorities:
+        for index in indices:
+            block = blocks[index]
+            if block in selected_texts:
+                continue
+            candidate_indices = sorted((*selected, index))
+            candidate = "\n\n".join(blocks[item] for item in candidate_indices)
+            if _serialized_bytes(candidate) <= SELECTION_MAX_BYTES:
+                selected.add(index)
+                selected_texts.add(block)
+
+    text = "\n\n".join(blocks[index] for index in sorted(selected))
+    if not text:
+        text = _safe_prefix(markdown)
+    return AnalysisSelection(text, SELECTION_VERSION, len(markdown), len(text), True)
+
+
 class OllamaAnalyzer:
     def __init__(
         self, base_url="http://127.0.0.1:11434", model="llama3.1:8b",
@@ -45,12 +120,12 @@ class OllamaAnalyzer:
         self._url = base_url.rstrip("/") + "/api/chat"
         self._model = model
         self._timeout = httpx.Timeout(timeout_seconds, connect=3)
-        self._max_input_bytes = max_input_bytes
+        self._max_input_bytes = min(max_input_bytes, ANALYSIS_MAX_BYTES)
         self._transport = transport
 
     async def analyze(self, markdown):
-        text = markdown.strip()
-        if not text:
+        text = markdown
+        if not text.strip():
             raise self._error("empty_extraction", "MinerU did not return document text.", False)
         document_json = json.dumps(text, ensure_ascii=False)
         if len(document_json.encode("utf-8")) > self._max_input_bytes:

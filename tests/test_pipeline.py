@@ -45,5 +45,11 @@ async def test_pipeline_records_lineage_and_analysis(tmp_path):
 
     assert stored.input_lineage.sha256 == "input-hash"
     assert result.metadata["analysis"]["route"] == "review_queue"
+    assert result.metadata["analysis_selection"] == {
+        "strategy_version": "document-intake-selection-v1",
+        "source_characters": 43,
+        "selected_characters": 43,
+        "compacted": False,
+    }
     assert result.metadata["extraction"]["preview"].startswith("# Phishing")
     assert not source.exists()

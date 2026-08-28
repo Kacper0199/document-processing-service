@@ -21,6 +21,7 @@ from papertrail.worker import InMemoryWorkQueue, WorkerSupervisor
 
 logger = logging.getLogger("papertrail")
 JOB_LIST_LIMIT = 100
+DASHBOARD_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
 def create_app(service=None, worker=None) -> FastAPI:
@@ -54,7 +55,7 @@ def create_app(service=None, worker=None) -> FastAPI:
     app = FastAPI(title="Papertrail", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
+        allow_origins=DASHBOARD_ORIGINS,
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "Idempotency-Key"],
     )

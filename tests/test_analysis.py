@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from papertrail.analysis import Commitment, DocumentAnalysis, Topic, route_for
-from papertrail.ollama import OllamaAnalyzer
+from papertrail.ollama import OllamaAnalyzer, select_analysis_text
 from papertrail.worker import ProcessingError
 
 
@@ -38,6 +38,83 @@ def test_schema_rejects_unknown_fields():
         DocumentAnalysis.model_validate(analysis_data(unexpected="value"))
 
 
+def test_selection_leaves_short_markdown_unchanged():
+    source = "# Safety guide\n\nOperators should inspect the filter daily."
+
+    selection = select_analysis_text(source)
+
+    assert selection.text == source
+    assert selection.source_characters == len(source)
+    assert selection.selected_characters == len(source)
+    assert selection.compacted is False
+
+
+def test_selection_compacts_long_markdown_without_splitting_or_inventing_blocks():
+    action = "The facility shall inspect every treatment unit before startup."
+    paragraphs = [
+        "# Remediation plan",
+        "This overview describes the cleanup and its environmental objectives.",
+        *[f"Background section {index} " + "detail " * 35 for index in range(30)],
+        action,
+        "Final monitoring results are reported to the project team.",
+        "The report closes with contact information for the agency.",
+    ]
+    source = "\n\n".join(paragraphs)
+
+    selection = select_analysis_text(source)
+
+    assert selection.compacted is True
+    assert len(json.dumps(selection.text, ensure_ascii=False).encode()) <= 5600
+    assert action in selection.text
+    assert selection.text.startswith("# Remediation plan")
+    assert selection.text.endswith(paragraphs[-1])
+    assert all(block in source for block in selection.text.split("\n\n"))
+
+
+def test_selection_guarantees_serialized_size_for_multibyte_paragraphs():
+    action = "Operators should reduce emissions before work begins."
+    source = "\n\n".join(["# Guidance", *(["界" * 700] * 8), action, "Final note."])
+
+    selection = select_analysis_text(source)
+
+    assert len(json.dumps(selection.text, ensure_ascii=False).encode("utf-8")) <= 5600
+    assert action in selection.text
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "A sentence with useful context. " + "a" * 10_000,
+        "Ważne zalecenie dla użytkownika. " + "界" * 10_000,
+    ],
+)
+def test_selection_falls_back_to_safe_prefix_for_one_oversized_paragraph(source):
+    selection = select_analysis_text(source)
+
+    assert selection.text
+    assert len(json.dumps(selection.text, ensure_ascii=False).encode("utf-8")) <= 5600
+    assert source.startswith(selection.text)
+    assert selection.source_characters == len(source)
+    assert selection.selected_characters == len(selection.text)
+    assert selection.compacted is True
+
+
+@pytest.mark.asyncio
+async def test_analyzer_accepts_oversized_single_paragraph_selection():
+    selection = select_analysis_text("A security guidance sentence. " + "界" * 10_000)
+
+    async def handle(request):
+        payload = json.loads(request.content)
+        encoded_document = payload["messages"][-1]["content"].split("\n", 1)[1]
+        assert json.loads(encoded_document) == selection.text
+        return httpx.Response(200, json={"message": {"content": json.dumps(analysis_data())}})
+
+    analyzer = OllamaAnalyzer(transport=httpx.MockTransport(handle))
+    run = await analyzer.analyze(selection.text)
+
+    assert run.analysis.topic == Topic.SECURITY
+
+
 @pytest.mark.asyncio
 async def test_sends_a_structured_ollama_request():
     source = "A short guide to phishing controls."
@@ -58,7 +135,6 @@ async def test_sends_a_structured_ollama_request():
 
     analyzer = OllamaAnalyzer(transport=httpx.MockTransport(handle))
     run = await analyzer.analyze(source)
-
     assert run.analysis.topic == Topic.SECURITY
     assert run.route == "review_queue"
     assert run.prompt_tokens == 120
@@ -99,7 +175,7 @@ async def test_rejects_token_dense_input_before_request():
     async def handle(request):
         raise AssertionError("Ollama request should not be sent")
 
-    analyzer = OllamaAnalyzer(transport=httpx.MockTransport(handle))
+    analyzer = OllamaAnalyzer(max_input_bytes=10_000, transport=httpx.MockTransport(handle))
     with pytest.raises(ProcessingError) as error:
         await analyzer.analyze("界" * 2500)
 
